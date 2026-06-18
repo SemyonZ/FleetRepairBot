@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FleetRepairBot.Domain\FleetRepairBot.Domain.csproj" />
+    <ProjectReference Include="..\FleetRepairBot.Data\FleetRepairBot.Data.csproj" />
+    <ProjectReference Include="..\FleetRepairBot.Services\FleetRepairBot.Services.csproj" />
+    <ProjectReference Include="..\FleetRepairBot.Infrastructure\FleetRepairBot.Infrastructure.csproj" />
+    <ProjectReference Include="..\FleetRepairBot.Telegram\FleetRepairBot.Telegram.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="6.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="6.0.0" />
+    <PackageReference Include="Telegram.Bot" Version="18.0.0" />
+  </ItemGroup>
+</Project>
