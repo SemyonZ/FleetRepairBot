@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FleetRepairBot.Domain\FleetRepairBot.Domain.csproj" />
+    <ProjectReference Include="..\FleetRepairBot.Data\FleetRepairBot.Data.csproj" />
+  </ItemGroup>
+</Project>
