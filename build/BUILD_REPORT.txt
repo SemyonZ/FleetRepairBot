@@ -1,0 +1,2 @@
+Build Fixer applied: CFG-001
+Bot services are registered only when TELEGRAM_BOT_TOKEN or TelegramBot:BotToken is provided.
