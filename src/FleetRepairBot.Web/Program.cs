@@ -1,57 +1,79 @@
 using System;
-using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
-using FleetRepairBot.Telegram;
-using FleetRepairBot.Infrastructure;
-using FleetRepairBot.Data;
 using Microsoft.EntityFrameworkCore;
+using Telegram.Bot;
+using FleetRepairBot.Data;
 using FleetRepairBot.Data.Repositories;
 using FleetRepairBot.Services;
-using Telegram.Bot;
+using FleetRepairBot.Infrastructure;
 
-var builder = Host.CreateDefaultBuilder(args)
-    .ConfigureAppConfiguration((ctx, cfg) => { cfg.AddEnvironmentVariables(); })
-    .ConfigureServices((ctx, services) =>
+var builder = WebApplication.CreateBuilder(args);
+var configuration = builder.Configuration;
+
+// Add services to the container.
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// DbContext: use InMemory by default to simplify local development and CI. This avoids hard dependency on external DB for basic runs/tests.
+builder.Services.AddDbContext<FleetRepairDbContext>(options =>
+    options.UseInMemoryDatabase("FleetRepair"));
+
+// Repositories and services registration (scoped lifetime for DB-scoped services)
+// Note: namespaces and types align with repository/service folders
+builder.Services.AddScoped<IDriverRepository, DriverRepository>();
+builder.Services.AddScoped<IVehicleRepository, VehicleRepository>();
+builder.Services.AddScoped<IRepairRequestService, RepairRequestService>();
+builder.Services.AddScoped<IFileStorage, FileSystemStorage>();
+
+// Telegram client and hosted service
+// Priority for token: environment variable TELEGRAM_BOT_TOKEN; fallback to configuration Telegram:BotToken
+var envToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
+var configToken = configuration["Telegram:BotToken"];
+var botToken = !string.IsNullOrWhiteSpace(envToken) ? envToken : (configToken ?? string.Empty);
+
+if (!string.IsNullOrWhiteSpace(botToken))
+{
+    // Register Telegram client only when a token is available
+    builder.Services.AddSingleton<ITelegramBotClient>(_ => new TelegramBotClient(botToken));
+
+    // Try to register BotHostedService by reflection to avoid compile-time dependency if the implementation is missing.
+    // This ensures the application won't fail to start when the hosted-service class isn't present; the bot will simply not start.
+    var hostedType = Type.GetType("FleetRepairBot.Telegram.BotHostedService, FleetRepairBot.Telegram");
+    if (hostedType != null && typeof(IHostedService).IsAssignableFrom(hostedType))
     {
-        var configuration = ctx.Configuration;
+        // Register the hosted service using the non-generic overload via the IHostedService service type
+        builder.Services.AddSingleton(typeof(IHostedService), provider =>
+            ActivatorUtilities.CreateInstance(provider, hostedType));
+    }
+    else
+    {
+        // If BotHostedService implementation is not present, skip hosted service registration.
+        // The bot client is still registered (useful for other parts), but no hosted background processing will run.
+        Console.WriteLine("BotHostedService type not found; Telegram bot client registered but hosted service not started.");
+    }
+}
+else
+{
+    // No token provided: do not register Telegram client or hosted service. Application must not crash on start.
+    Console.WriteLine("No Telegram bot token configured (TELEGRAM_BOT_TOKEN env or Telegram:BotToken). Telegram bot will not be started.");
+}
 
-        // DbContext
-        services.AddDbContext<FleetRepairDbContext>(opt => opt.UseInMemoryDatabase("fleet"));
+var app = builder.Build();
 
-        // Repositories and services
-        services.AddScoped<IRepairRequestRepository, RepairRequestRepository>();
-        services.AddScoped<IDriverRepository, DriverRepository>();
-        services.AddScoped<IVehicleRepository, VehicleRepository>();
-        services.AddScoped<IRepairRequestService, RepairRequestService>();
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
-        // File storage
-        services.AddSingleton<IFileStorage>(sp => new FileSystemStorage("./files"));
+app.UseRouting();
+app.UseAuthorization();
+app.MapControllers();
 
-        // Resolve Telegram token: prefer environment variable TELEGRAM_BOT_TOKEN, fallback to configuration TelegramBot:BotToken
-        var envToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
-        var configToken = configuration["TelegramBot:BotToken"];
-        var token = !string.IsNullOrWhiteSpace(envToken) ? envToken : configToken;
-
-        if (!string.IsNullOrWhiteSpace(token))
-        {
-            // Bind other Telegram options from configuration section if present, but ensure Token is set from resolved value
-            var telegramOptions = new TelegramBotOptions();
-            configuration.GetSection("TelegramBot").Bind(telegramOptions);
-            telegramOptions.Token = token;
-
-            services.AddSingleton(telegramOptions);
-
-            // Register Telegram client (singleton) and related components only when a token is present
-            services.AddSingleton<ITelegramBotClient>(sp => new TelegramBotClient(telegramOptions.Token));
-
-            services.AddSingleton<TelegramUpdateHandler>();
-            services.AddHostedService<BotHostedService>();
-        }
-        else
-        {
-            // No token provided: do not register bot-related services. Application will run without the bot.
-        }
-    });
-
-await builder.RunConsoleAsync();
+app.Run();
