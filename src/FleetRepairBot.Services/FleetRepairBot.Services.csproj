@@ -1,12 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
-
   <ItemGroup>
-    <ProjectReference Include="..\FleetRepairBot.Domain\FleetRepairBot.Domain.csproj" />
-    <ProjectReference Include="..\FleetRepairBot.Data\FleetRepairBot.Data.csproj" />
+    <ProjectReference Include="../FleetRepairBot.Domain/FleetRepairBot.Domain.csproj" />
+    <ProjectReference Include="../FleetRepairBot.Data/FleetRepairBot.Data.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.0" />
   </ItemGroup>
 </Project>
