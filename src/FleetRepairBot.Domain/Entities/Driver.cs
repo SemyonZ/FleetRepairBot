@@ -9,3 +9,4 @@ namespace FleetRepairBot.Domain.Entities
         public string Phone { get; set; } = string.Empty;
     }
 }
+THIS_IS_BUILD_TEST_ERROR
