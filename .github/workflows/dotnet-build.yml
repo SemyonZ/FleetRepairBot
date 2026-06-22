@@ -1,8 +1,8 @@
-name: CI - dotnet build logs
+name: .NET Build (detailed logs)
 
 on:
-  push: {}
-  pull_request: {}
+  push:
+  pull_request:
 
 jobs:
   build:
@@ -17,70 +17,43 @@ jobs:
         with:
           dotnet-version: '7.0.x'
 
-      - name: Runner diagnostics and dotnet --info
-        run: |
-          echo "=== Environment ==="
-          printenv || true
-          echo "\n=== PATH ==="
-          echo "$PATH" || true
-          echo "\n=== Workspace listing ==="
-          ls -la || true
-          echo "\n=== dotnet --info ==="
-          dotnet --info > dotnet-info.txt 2>&1 || true
-          echo "--- dotnet --info (first lines) ---"
-          head -n 50 dotnet-info.txt || true
+      - name: Dotnet info
+        run: dotnet --info > dotnet-info.txt
 
-      - name: Dotnet restore (detailed)
-        continue-on-error: true
+      - name: Restore
+        shell: bash
         run: |
-          set +e
           set -o pipefail
-          echo "Running dotnet restore for src/FleetRepairBot.Web/FleetRepairBot.Web.csproj"
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1
-          echo "$?" > restore_exit_code.txt
-          echo "restore.log size: $(wc -c < restore.log 2>/dev/null || echo 0) bytes"
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee restore.log
+          rc=${PIPESTATUS[0]}
+          if [ $rc -ne 0 ]; then
+            echo "dotnet restore failed with exit code $rc"
+            echo "---- Restore log start ----"
+            sed -n '1,2000p' restore.log || true
+            echo "---- Restore log end ----"
+            exit $rc
+          fi
 
-      - name: Dotnet build (detailed, no-restore)
-        continue-on-error: true
+      - name: Build
+        shell: bash
         run: |
-          set +e
           set -o pipefail
-          echo "Running dotnet build for src/FleetRepairBot.Web/FleetRepairBot.Web.csproj (Release, no-restore)"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1
-          echo "$?" > build_exit_code.txt
-          echo "build.log size: $(wc -c < build.log 2>/dev/null || echo 0) bytes"
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee build.log
+          rc=${PIPESTATUS[0]}
+          if [ $rc -ne 0 ]; then
+            echo "dotnet build failed with exit code $rc"
+            echo "---- Build log start ----"
+            sed -n '1,2000p' build.log || true
+            echo "---- Build log end ----"
+            exit $rc
+          fi
 
-      - name: Upload logs artifact
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dotnet-build-logs
+          name: dotnet-logs
           path: |
             dotnet-info.txt
             restore.log
             build.log
-
-      - name: Upload exit codes (always)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dotnet-exit-codes
-          path: |
-            restore_exit_code.txt
-            build_exit_code.txt
-
-      - name: Fail if restore or build failed
-        if: always()
-        run: |
-          set +e
-          restore_exit=1
-          build_exit=1
-          if [ -f restore_exit_code.txt ]; then restore_exit=$(cat restore_exit_code.txt || echo 1); fi
-          if [ -f build_exit_code.txt ]; then build_exit=$(cat build_exit_code.txt || echo 1); fi
-          echo "Restore exit code: $restore_exit"
-          echo "Build exit code: $build_exit"
-          if [ "${restore_exit}" -ne 0 ] || [ "${build_exit}" -ne 0 ]; then
-            echo "One or more dotnet steps failed. See uploaded logs: dotnet-info.txt, restore.log, build.log"
-            exit 1
-          fi
-          echo "Both restore and build reported exit code 0."
