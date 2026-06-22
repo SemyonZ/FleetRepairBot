@@ -2,25 +2,40 @@ name: .NET Build
 
 on:
   push:
-    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 6
-        uses: actions/setup-dotnet@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
         with:
-         dotnet-version: '8.0.x'
+          dotnet-version: '7.0.x'
+
+      - name: dotnet --info
+        run: dotnet --info > dotnet-info.txt 2>&1
+
+      - name: List NuGet sources
+        run: dotnet nuget list source > nuget-sources.txt 2>&1 || true
 
       - name: Restore
-        run: dotnet restore FleetRepairBot.sln
+        run: dotnet restore src/FleetRepairBot/FleetRepairBot.csproj --verbosity detailed > restore.log 2>&1
 
       - name: Build
-        run: dotnet build FleetRepairBot.sln -c Release --no-restore
+        run: dotnet build src/FleetRepairBot/FleetRepairBot.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            restore.log
+            build.log
+            dotnet-info.txt
+            nuget-sources.txt
