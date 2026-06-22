@@ -1,4 +1,4 @@
-name: .NET Build
+name: .NET Build (Detailed logs)
 
 on:
   push:
@@ -9,8 +9,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v3
@@ -18,24 +18,61 @@ jobs:
           dotnet-version: '7.0.x'
 
       - name: dotnet --info
-        run: dotnet --info > dotnet-info.txt 2>&1
+        run: |
+          dotnet --info 2>&1 | tee dotnet-info.txt
 
-      - name: List NuGet sources
-        run: dotnet nuget list source > nuget-sources.txt 2>&1 || true
+      - name: Diagnostics (NuGet, environment)
+        run: |
+          echo "=== dotnet nuget locals ===" > diagnostic.log
+          dotnet nuget locals all --list 2>&1 | tee -a diagnostic.log || true
+          echo "=== dotnet nuget list source ===" >> diagnostic.log
+          dotnet nuget list source --verbosity detailed 2>&1 | tee -a diagnostic.log || true
+          echo "=== Environment (filtered) ===" >> diagnostic.log
+          printenv | grep -i -E 'NUGET|FEED|TOKEN|AUTH|TELEGRAM' 2>&1 | tee -a diagnostic.log || true
+          echo "NUGET_AUTH_TOKEN present: ${{ secrets.NUGET_AUTH_TOKEN != '' }}" >> diagnostic.log
+          echo "TELEGRAM_BOT_TOKEN present: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}" >> diagnostic.log
 
-      - name: Restore
-        run: dotnet restore src/FleetRepairBot/FleetRepairBot.csproj --verbosity detailed > restore.log 2>&1
+      - name: Restore with detailed logs and retries
+        run: |
+          set -o pipefail
+          PROJ='src/FleetRepairBot.Web/FleetRepairBot.Web.csproj'
+          echo "Restoring $PROJ"
+          attempts=3
+          count=0
+          rm -f restore.log || true
+          until [ $count -ge $attempts ]
+          do
+            count=$((count+1))
+            echo "\n===== Attempt $count of $attempts =====\n" | tee -a restore.log
+            dotnet restore "$PROJ" --verbosity detailed 2>&1 | tee -a restore.log && exit_code=0 || exit_code=$?
+            if [ $exit_code -eq 0 ]; then
+              echo "Restore succeeded on attempt $count" | tee -a restore.log
+              exit 0
+            fi
+            echo "Restore failed with exit code $exit_code" | tee -a restore.log
+            if [ $count -lt $attempts ]; then
+              echo "Retrying after backoff..." | tee -a restore.log
+              sleep 5
+            fi
+          done
+          echo "All restore attempts failed" | tee -a restore.log
+          exit 1
 
-      - name: Build
-        run: dotnet build src/FleetRepairBot/FleetRepairBot.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1
+      - name: Build with detailed logs
+        run: |
+          set -o pipefail
+          PROJ='src/FleetRepairBot.Web/FleetRepairBot.Web.csproj'
+          rm -f build.log || true
+          echo "Building $PROJ" | tee -a build.log
+          dotnet build "$PROJ" --no-restore --configuration Release --verbosity detailed 2>&1 | tee -a build.log
 
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: build-logs
+          name: dotnet-logs
           path: |
+            dotnet-info.txt
+            diagnostic.log
             restore.log
             build.log
-            dotnet-info.txt
-            nuget-sources.txt
