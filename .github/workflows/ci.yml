@@ -6,12 +6,56 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
+
+      - name: Collect .NET info and NuGet sources
+        run: |
+          set -o pipefail
+          echo "=== dotnet --info ==="
+          dotnet --info 2>&1 | tee dotnet-info.log
+          echo "=== dotnet nuget list source ==="
+          dotnet nuget list source 2>&1 | tee nuget-sources.log
+
       - name: Restore
-        run: dotnet restore
+        run: |
+          set -o pipefail
+          echo "Starting dotnet restore (detailed)"
+          dotnet restore --verbosity detailed 2>&1 | tee restore.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "dotnet restore failed with exit code $rc"
+            echo "--- restore.log begin ---"
+            tail -n +1 restore.log
+            echo "--- restore.log end ---"
+            exit $rc
+          fi
+
       - name: Build
-        run: dotnet build --no-restore --configuration Release
+        run: |
+          set -o pipefail
+          echo "Starting dotnet build (detailed, no-restore)"
+          dotnet build --no-restore --configuration Release --verbosity detailed 2>&1 | tee build.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "dotnet build failed with exit code $rc"
+            echo "--- build.log begin ---"
+            tail -n +1 build.log
+            echo "--- build.log end ---"
+            exit $rc
+          fi
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-logs
+          path: |
+            dotnet-info.log
+            nuget-sources.log
+            restore.log
+            build.log
