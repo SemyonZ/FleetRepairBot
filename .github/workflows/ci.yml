@@ -1,58 +1,94 @@
 name: CI
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+push:
+branches: [ main ]
+pull_request:
+branches: [ main ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '6.0.x'
+build:
+runs-on: ubuntu-latest
 
-      - name: Restore (detailed, capture logs)
-        shell: bash
-        run: |
-          set -o pipefail
-          mkdir -p build-logs
-          echo "Running dotnet restore..."
-          # Use explicit project path to capture precise restore failures
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic > build-logs/restore.log 2>&1 || { echo "dotnet restore failed. See build-logs/restore.log"; exit 1; }
 
-      - name: Build (detailed, capture logs)
-        shell: bash
-        run: |
-          set -o pipefail
-          echo "Running dotnet build..."
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic > build-logs/build.log 2>&1 || { echo "dotnet build failed. See build-logs/build.log"; exit 1; }
+steps:
+  - uses: actions/checkout@v4
 
-      - name: Test (capture test logs)
-        shell: bash
-        run: |
-          set -o pipefail
-          echo "Running dotnet test..."
-          # Run tests against the solution/project if present; capture logs even if tests fail
-          dotnet test --no-build --verbosity normal > build-logs/test.log 2>&1 || { echo "dotnet test failed or had issues. See build-logs/test.log"; exit 1; }
+  - name: Setup .NET
+    uses: actions/setup-dotnet@v4
+    with:
+      dotnet-version: '6.0.x'
 
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: build-logs/
+  - name: Restore (detailed, capture logs)
+    shell: bash
+    run: |
+      mkdir -p build-logs
 
-      - name: Print tail of logs for quick inspection
-        shell: bash
-        run: |
-          echo "==== Restore log tail (last 200 lines) ===="
-          if [ -f build-logs/restore.log ]; then tail -n 200 build-logs/restore.log || true; else echo "restore.log not found"; fi
-          echo "==== Build log tail (last 200 lines) ===="
-          if [ -f build-logs/build.log ]; then tail -n 200 build-logs/build.log || true; else echo "build.log not found"; fi
-          echo "==== Test log tail (last 200 lines) ===="
-          if [ -f build-logs/test.log ]; then tail -n 200 build-logs/test.log || true; else echo "test.log not found"; fi
+      echo "Running dotnet restore..."
+
+      dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj \
+        --verbosity diagnostic \
+        > build-logs/restore.log 2>&1
+
+      RESTORE_EXIT=$?
+
+      echo "===== RESTORE LOG ====="
+      tail -n 200 build-logs/restore.log || true
+
+      exit $RESTORE_EXIT
+
+  - name: Build (detailed, capture logs)
+    shell: bash
+    run: |
+      echo "Running dotnet build..."
+
+      dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj \
+        --no-restore \
+        --configuration Release \
+        --verbosity diagnostic \
+        > build-logs/build.log 2>&1
+
+      BUILD_EXIT=$?
+
+      echo "===== BUILD LOG ====="
+      tail -n 200 build-logs/build.log || true
+
+      exit $BUILD_EXIT
+
+  - name: Test (capture test logs)
+    shell: bash
+    run: |
+      echo "Running dotnet test..."
+
+      dotnet test \
+        --no-build \
+        --verbosity normal \
+        > build-logs/test.log 2>&1
+
+      TEST_EXIT=$?
+
+      echo "===== TEST LOG ====="
+      cat build-logs/test.log || true
+
+      exit $TEST_EXIT
+
+  - name: Upload logs
+    if: always()
+    uses: actions/upload-artifact@v4
+    with:
+      name: build-logs
+      path: build-logs/**
+
+  - name: Print log tails
+    if: always()
+    shell: bash
+    run: |
+      echo "==== RESTORE ===="
+      tail -n 200 build-logs/restore.log || true
+
+      echo "==== BUILD ===="
+      tail -n 200 build-logs/build.log || true
+
+      echo "==== TEST ===="
+      tail -n 200 build-logs/test.log || true
+
