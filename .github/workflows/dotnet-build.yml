@@ -1,4 +1,4 @@
-name: CI
+name: .NET Build
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,36 +17,43 @@ jobs:
         with:
           dotnet-version: '7.0.x'
 
-      - name: Dotnet info
-        run: |
-          dotnet --info > dotnet-info.txt 2>&1
-
       - name: Restore
         run: |
-          # Restore with detailed verbosity and save output to restore.log
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1
-          rc=$?
-          if [ "$rc" -ne 0 ]; then
-            echo "dotnet restore failed with exit code $rc"
-            exit $rc
-          fi
+          # Run explicit restore for the sole project with detailed verbosity and capture output to a file.
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || (cat restore.log && exit 1)
 
-      - name: Build
-        run: |
-          # Build with detailed verbosity and save output to build.log
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1
-          rc=$?
-          if [ "$rc" -ne 0 ]; then
-            echo "dotnet build failed with exit code $rc"
-            exit $rc
-          fi
-
-      - name: Upload logs
+      - name: Save restore log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
-          path: |
-            restore.log
-            build.log
-            dotnet-info.txt
+          name: restore-log
+          path: restore.log
+
+      - name: Diagnostics
+        run: |
+          # Collect runtime/SDK and NuGet diagnostics to help analyze restore/build failures.
+          echo "==== dotnet --list-sdks ====" > diagnostics.log
+          dotnet --list-sdks >> diagnostics.log 2>&1 || true
+          echo "\n==== dotnet --info ====" >> diagnostics.log
+          dotnet --info >> diagnostics.log 2>&1 || true
+          echo "\n==== dotnet nuget locals all --list ====" >> diagnostics.log
+          dotnet nuget locals all --list >> diagnostics.log 2>&1 || true
+
+      - name: Save diagnostics log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-log
+          path: diagnostics.log
+
+      - name: Build
+        run: |
+          # Build the single project without restore, with detailed verbosity and write output to build.log.
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1 || (cat build.log && exit 1)
+
+      - name: Save build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
