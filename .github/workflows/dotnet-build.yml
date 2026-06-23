@@ -1,4 +1,4 @@
-name: .NET CI - Build with detailed logs
+name: .NET Build
 
 on:
   push:
@@ -8,11 +8,11 @@ on:
 
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup .NET
@@ -20,76 +20,26 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Print environment and dotnet info
-        shell: bash
+      - name: Configure DOTNET environment
         run: |
-          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          echo "Runner OS: $RUNNER_OS"
-          dotnet --info || true
-          echo "Listing nuget packages cache (if exists):"
-          ls -la "$HOME/.nuget/packages" || true
-          echo "Listing project files in repo root (for debug):"
-          find . -maxdepth 3 -type f -name '*.csproj' -print || true
+          echo "DOTNET_CLI_TELEMETRY_OPTOUT=1" >> $GITHUB_ENV
+          echo "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1" >> $GITHUB_ENV
 
-      - name: Cache NuGet packages and obj
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.nuget/packages
-            src/FleetRepairBot.Web/obj
-          key: nuget-packages-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            nuget-packages-${{ runner.os }}-
+      - name: dotnet --info
+        run: dotnet --info
 
       - name: Restore (capture detailed logs)
-        shell: bash
-        env:
-          NUGET_HTTP_CACHE_PATH: ${{ github.workspace }}/.nuget_http_cache
         run: |
-          set -o pipefail
-          mkdir -p "$NUGET_HTTP_CACHE_PATH"
-          echo "Running: dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed"
-          # Capture full restore output to restore.log
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || RESTORE_RC=$?
-          RESTORE_RC=${RESTORE_RC:-0}
-          echo "dotnet restore exit code: $RESTORE_RC"
-          echo "--- First 200 lines of restore.log ---"
-          sed -n '1,200p' restore.log || true
-          echo "--- Last 200 lines of restore.log ---"
-          tail -n 200 restore.log || true
-          if [ "$RESTORE_RC" -ne 0 ]; then
-            echo "Restore failed (exit code $RESTORE_RC). The full restore.log will be uploaded as an artifact."
-            # Print a short actionable message to the console to help quick triage
-            echo "::error::dotnet restore failed. See restore.log artifact for details."
-            exit $RESTORE_RC
-          fi
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || (echo "restore failed, see restore.log" && cat restore.log && exit 1)
 
-      - name: Upload restore.log
-        if: always()
+      - name: Build (capture detailed logs)
+        run: |
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1 || (echo "build failed, see build.log" && cat build.log && exit 1)
+
+      - name: Upload logs
         uses: actions/upload-artifact@v4
         with:
-          name: restore-log
-          path: restore.log
-
-      - name: Build (no-restore, capture logs)
-        shell: bash
-        run: |
-          set -o pipefail
-          echo "Running: dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity minimal"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity minimal > build.log 2>&1 || BUILD_RC=$?
-          BUILD_RC=${BUILD_RC:-0}
-          echo "dotnet build exit code: $BUILD_RC"
-          echo "--- Last 200 lines of build.log ---"
-          tail -n 200 build.log || true
-          if [ "$BUILD_RC" -ne 0 ]; then
-            echo "Build failed (exit code $BUILD_RC). The full build.log will be uploaded as an artifact."
-            echo "::error::dotnet build failed. See build.log artifact for details."
-            exit $BUILD_RC
-          fi
-
-      - name: Upload build.log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
+          name: ci-logs
+          path: |
+            restore.log
+            build.log
