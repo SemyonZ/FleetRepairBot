@@ -2,57 +2,39 @@ name: .NET Build
 
 on:
   push:
-    branches: ["main"]
+    branches: [ main, master ]
   pull_request:
-    branches: ["main"]
+    branches: [ main, master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          # Adjust the SDK version as needed for the project (e.g. 7.0.x, 8.0.x)
-          dotnet-version: '7.0.x'
+          dotnet-version: '6.0.x'
 
-      - name: Save dotnet --info
+      - name: Restore (detailed) and capture log
         run: |
-          dotnet --info 2>&1 | tee dotnet-info.log
+          set -o pipefail
+          mkdir -p build_logs
+          echo "Starting dotnet restore for src/FleetRepairBot.Web/FleetRepairBot.Web.csproj"
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee build_logs/restore.log
 
-      - name: Restore (capture detailed logs)
+      - name: Build (no-restore, detailed) and capture log
         run: |
-          # Restore targeted project and capture detailed logs
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee restore.log
-        continue-on-error: true
+          set -o pipefail
+          echo "Starting dotnet build for src/FleetRepairBot.Web/FleetRepairBot.Web.csproj"
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee build_logs/build.log
 
-      - name: Upload restore log
+      - name: Upload restore and build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: restore-log-${{ github.run_id }}.log
-          path: restore.log
-
-      - name: Build (capture detailed logs)
-        run: |
-          # Build targeted project without restoring and capture detailed logs
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee build.log
-        continue-on-error: true
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log-${{ github.run_id }}.log
-          path: build.log
-
-      - name: Upload dotnet-info
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dotnet-info-${{ github.run_id }}.log
-          path: dotnet-info.log
+          name: dotnet-logs
+          path: build_logs
