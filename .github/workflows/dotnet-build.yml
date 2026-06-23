@@ -2,44 +2,51 @@ name: .NET Build
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
-
-      - name: Configure DOTNET environment
-        run: |
-          echo "DOTNET_CLI_TELEMETRY_OPTOUT=1" >> $GITHUB_ENV
-          echo "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1" >> $GITHUB_ENV
-
-      - name: dotnet --info
-        run: dotnet --info
+          dotnet-version: '7.0.x'
 
       - name: Restore (capture detailed logs)
         run: |
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || (echo "restore failed, see restore.log" && cat restore.log && exit 1)
+          # Collect environment information first
+          dotnet --info > restore.log 2>&1 || true
+          dotnet nuget list source --format short >> restore.log 2>&1 || true
+
+          # Run verbose restore for the specific project and capture logs.
+          # On failure print the log and fail the step so logs are preserved in job output and uploaded below.
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed >> restore.log 2>&1 || (cat restore.log && exit 1)
 
       - name: Build (capture detailed logs)
         run: |
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1 || (echo "build failed, see build.log" && cat build.log && exit 1)
+          # Build without restore (restore already performed) and capture detailed output
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1 || (cat build.log && exit 1)
 
-      - name: Upload logs
+      - name: Upload restore log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-logs
-          path: |
-            restore.log
-            build.log
+          name: restore-log
+          path: restore.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
