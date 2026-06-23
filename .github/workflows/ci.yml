@@ -9,38 +9,49 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_CLI_CONTEXT_VERBOSE: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
-      - name: Dotnet --info (capture environment)
-        run: dotnet --info 2>&1 | tee dotnet-info.txt
+
       - name: Restore (detailed, capture logs)
+        shell: bash
         run: |
           set -o pipefail
-          # Restore the solution with detailed verbosity and capture output to restore.log
-          dotnet restore FleetRepairBot.sln --verbosity detailed 2>&1 | tee restore.log
+          mkdir -p build-logs
+          echo "Running dotnet restore..."
+          # Use explicit project path to capture precise restore failures
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic > build-logs/restore.log 2>&1 || { echo "dotnet restore failed. See build-logs/restore.log"; exit 1; }
+
       - name: Build (detailed, capture logs)
+        shell: bash
         run: |
           set -o pipefail
-          # Build the solution (no-restore) and capture output to build.log
-          dotnet build FleetRepairBot.sln --configuration Release --no-restore --verbosity detailed 2>&1 | tee build.log
-      - name: Test (capture logs)
+          echo "Running dotnet build..."
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic > build-logs/build.log 2>&1 || { echo "dotnet build failed. See build-logs/build.log"; exit 1; }
+
+      - name: Test (capture test logs)
+        shell: bash
         run: |
           set -o pipefail
-          dotnet test --no-build --verbosity normal 2>&1 | tee test.log
-      - name: Upload dotnet logs
-        if: always()
+          echo "Running dotnet test..."
+          # Run tests against the solution/project if present; capture logs even if tests fail
+          dotnet test --no-build --verbosity normal > build-logs/test.log 2>&1 || { echo "dotnet test failed or had issues. See build-logs/test.log"; exit 1; }
+
+      - name: Upload logs
         uses: actions/upload-artifact@v4
         with:
-          name: dotnet-logs
-          path: |
-            dotnet-info.txt
-            restore.log
-            build.log
-            test.log
+          name: dotnet-build-logs
+          path: build-logs
+
+      - name: Print tail of logs for quick inspection
+        shell: bash
+        run: |
+          echo "==== Restore log tail (last 200 lines) ===="
+          if [ -f build-logs/restore.log ]; then tail -n 200 build-logs/restore.log || true; else echo "restore.log not found"; fi
+          echo "==== Build log tail (last 200 lines) ===="
+          if [ -f build-logs/build.log ]; then tail -n 200 build-logs/build.log || true; else echo "build.log not found"; fi
+          echo "==== Test log tail (last 200 lines) ===="
+          if [ -f build-logs/test.log ]; then tail -n 200 build-logs/test.log || true; else echo "test.log not found"; fi
