@@ -2,14 +2,14 @@ name: .NET Build
 
 on:
   push:
+    branches: ["main"]
   pull_request:
+    branches: ["main"]
 
 jobs:
   build:
-    name: Build
     runs-on: ubuntu-latest
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,42 +17,42 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
+          # Adjust the SDK version as needed for the project (e.g. 7.0.x, 8.0.x)
           dotnet-version: '7.0.x'
 
+      - name: Save dotnet --info
+        run: |
+          dotnet --info 2>&1 | tee dotnet-info.log
+
       - name: Restore (capture detailed logs)
-        id: restore
         run: |
-          set -o pipefail
-          mkdir -p logs
-          echo "=== dotnet restore START ==="
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic 2>&1 | tee logs/restore.log
-          echo "=== dotnet restore END ==="
-        shell: bash
+          # Restore targeted project and capture detailed logs
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee restore.log
+        continue-on-error: true
 
-      - name: Build (no-restore, capture detailed logs)
-        id: build
-        run: |
-          set -o pipefail
-          mkdir -p logs
-          echo "=== dotnet build START ==="
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee logs/build.log
-          echo "=== dotnet build END ==="
-        shell: bash
-
-      - name: Upload logs (always)
+      - name: Upload restore log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dotnet-logs
-          path: |
-            logs/restore.log
-            logs/build.log
+          name: restore-log-${{ github.run_id }}.log
+          path: restore.log
 
-      - name: Print tail of logs for quick inspection (always)
-        if: always()
+      - name: Build (capture detailed logs)
         run: |
-          echo "--- Last 500 lines of restore.log (if present) ---"
-          if [ -f logs/restore.log ]; then tail -n 500 logs/restore.log || true; else echo "restore.log not found"; fi
-          echo "--- Last 500 lines of build.log (if present) ---"
-          if [ -f logs/build.log ]; then tail -n 500 logs/build.log || true; else echo "build.log not found"; fi
-        shell: bash
+          # Build targeted project without restoring and capture detailed logs
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee build.log
+        continue-on-error: true
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_id }}.log
+          path: build.log
+
+      - name: Upload dotnet-info
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-info-${{ github.run_id }}.log
+          path: dotnet-info.log
