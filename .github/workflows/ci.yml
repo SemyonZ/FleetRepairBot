@@ -1,61 +1,46 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_CLI_CONTEXT_VERBOSE: 'true'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
-
-      - name: Collect .NET info and NuGet sources
+      - name: Dotnet --info (capture environment)
+        run: dotnet --info 2>&1 | tee dotnet-info.txt
+      - name: Restore (detailed, capture logs)
         run: |
           set -o pipefail
-          echo "=== dotnet --info ==="
-          dotnet --info 2>&1 | tee dotnet-info.log
-          echo "=== dotnet nuget list source ==="
-          dotnet nuget list source 2>&1 | tee nuget-sources.log
-
-      - name: Restore
+          # Restore the solution with detailed verbosity and capture output to restore.log
+          dotnet restore FleetRepairBot.sln --verbosity detailed 2>&1 | tee restore.log
+      - name: Build (detailed, capture logs)
         run: |
           set -o pipefail
-          echo "Starting dotnet restore (detailed)"
-          dotnet restore --verbosity detailed 2>&1 | tee restore.log
-          rc=${PIPESTATUS[0]}
-          if [ "$rc" -ne 0 ]; then
-            echo "dotnet restore failed with exit code $rc"
-            echo "--- restore.log begin ---"
-            tail -n +1 restore.log
-            echo "--- restore.log end ---"
-            exit $rc
-          fi
-
-      - name: Build
+          # Build the solution (no-restore) and capture output to build.log
+          dotnet build FleetRepairBot.sln --configuration Release --no-restore --verbosity detailed 2>&1 | tee build.log
+      - name: Test (capture logs)
         run: |
           set -o pipefail
-          echo "Starting dotnet build (detailed, no-restore)"
-          dotnet build --no-restore --configuration Release --verbosity detailed 2>&1 | tee build.log
-          rc=${PIPESTATUS[0]}
-          if [ "$rc" -ne 0 ]; then
-            echo "dotnet build failed with exit code $rc"
-            echo "--- build.log begin ---"
-            tail -n +1 build.log
-            echo "--- build.log end ---"
-            exit $rc
-          fi
-
-      - name: Upload logs
+          dotnet test --no-build --verbosity normal 2>&1 | tee test.log
+      - name: Upload dotnet logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dotnet-logs
           path: |
-            dotnet-info.log
-            nuget-sources.log
+            dotnet-info.txt
             restore.log
             build.log
+            test.log
