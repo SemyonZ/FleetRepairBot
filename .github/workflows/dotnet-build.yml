@@ -18,14 +18,13 @@ jobs:
 
       - name: Dotnet info
         run: |
-          dotnet --info | tee dotnet-info.txt
+          dotnet --info > dotnet-info.txt 2>&1
 
       - name: Restore
         run: |
-          set -o pipefail
           # Restore with detailed verbosity and save output to restore.log
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee restore.log
-          rc=${PIPESTATUS[0]}
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1
+          rc=$?
           if [ "$rc" -ne 0 ]; then
             echo "dotnet restore failed with exit code $rc"
             exit $rc
@@ -33,10 +32,9 @@ jobs:
 
       - name: Build
         run: |
-          set -o pipefail
           # Build with detailed verbosity and save output to build.log
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee build.log
-          rc=${PIPESTATUS[0]}
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1
+          rc=$?
           if [ "$rc" -ne 0 ]; then
             echo "dotnet build failed with exit code $rc"
             exit $rc
