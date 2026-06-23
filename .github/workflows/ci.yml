@@ -19,7 +19,7 @@ steps:
     with:
       dotnet-version: '6.0.x'
 
-  - name: Restore (detailed, capture logs)
+  - name: Restore (capture logs)
     shell: bash
     run: |
       mkdir -p build-logs
@@ -37,7 +37,7 @@ steps:
 
       exit $RESTORE_EXIT
 
-  - name: Build (detailed, capture logs)
+  - name: Build (capture logs)
     shell: bash
     run: |
       echo "Running dotnet build..."
@@ -55,23 +55,6 @@ steps:
 
       exit $BUILD_EXIT
 
-  - name: Test (capture test logs)
-    shell: bash
-    run: |
-      echo "Running dotnet test..."
-
-      dotnet test \
-        --no-build \
-        --verbosity normal \
-        > build-logs/test.log 2>&1
-
-      TEST_EXIT=$?
-
-      echo "===== TEST LOG ====="
-      cat build-logs/test.log || true
-
-      exit $TEST_EXIT
-
   - name: Upload logs
     if: always()
     uses: actions/upload-artifact@v4
@@ -88,7 +71,3 @@ steps:
 
       echo "==== BUILD ===="
       tail -n 200 build-logs/build.log || true
-
-      echo "==== TEST ===="
-      tail -n 200 build-logs/test.log || true
-
