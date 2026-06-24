@@ -1,67 +1,33 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace FleetRepairBot.Domain.Entities
 {
+    // Represents a repair request (not an order)
     public class RepairRequest
     {
-        public Guid Id { get; private set; }
-        public Guid VehicleId { get; private set; }
-        public Guid? DriverId { get; private set; }
-        public Guid? DispatcherId { get; private set; }
-        public Status Status { get; private set; }
-        public string Description { get; private set; }
-        public DateTime CreatedAt { get; private set; }
-        public DateTime UpdatedAt { get; private set; }
+        public int Id { get; set; }
+        public string Title { get; set; }
+        public string Description { get; set; }
 
-        private readonly List<RequestPhoto> _photos = new List<RequestPhoto>();
-        public IReadOnlyCollection<RequestPhoto> Photos => _photos.AsReadOnly();
+        public int VehicleId { get; set; }
+        public Vehicle Vehicle { get; set; }
 
-        private readonly List<StatusHistory> _statusHistory = new List<StatusHistory>();
-        public IReadOnlyCollection<StatusHistory> StatusHistory => _statusHistory.AsReadOnly();
+        public int DriverId { get; set; }
+        public Driver Driver { get; set; }
 
-        protected RepairRequest() { }
+        // Assigned dispatcher (optional)
+        public int? DispatcherId { get; set; }
+        public Dispatcher Dispatcher { get; set; }
 
-        public RepairRequest(Guid vehicleId, Guid? driverId, string description)
-        {
-            Id = Guid.NewGuid();
-            VehicleId = vehicleId;
-            DriverId = driverId;
-            Description = description ?? string.Empty;
-            Status = Status.New;
-            CreatedAt = DateTime.UtcNow;
-            UpdatedAt = CreatedAt;
-            _statusHistory.Add(new StatusHistory(Id, null, Status.New, "system", CreatedAt));
-        }
+        public int StatusId { get; set; }
+        public Status Status { get; set; }
 
-        public void AssignDispatcher(Guid dispatcherId)
-        {
-            DispatcherId = dispatcherId;
-            UpdatedAt = DateTime.UtcNow;
-        }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
 
-        public void ChangeStatus(Status newStatus, string changedBy)
-        {
-            if (newStatus == Status)
-                return;
-
-            // basic rule: cannot move from Completed/Cancelled to other states
-            if ((Status == Status.Completed || Status == Status.Cancelled) && newStatus != Status)
-                throw new InvalidOperationException("Cannot change status from terminal state.");
-
-            var old = Status;
-            Status = newStatus;
-            var now = DateTime.UtcNow;
-            _statusHistory.Add(new StatusHistory(Id, old, newStatus, changedBy ?? "unknown", now));
-            UpdatedAt = now;
-        }
-
-        public void AddPhoto(RequestPhoto photo)
-        {
-            if (photo == null) throw new ArgumentNullException(nameof(photo));
-            _photos.Add(photo);
-            UpdatedAt = DateTime.UtcNow;
-        }
+        public ICollection<RequestPhoto> Photos { get; set; } = new List<RequestPhoto>();
+        public ICollection<StatusHistory> StatusHistory { get; set; } = new List<StatusHistory>();
+        public ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
     }
 }
