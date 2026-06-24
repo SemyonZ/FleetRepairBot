@@ -1,11 +1,17 @@
+using System;
+
 namespace FleetRepairBot.Domain.Entities
 {
-    public enum Status
+    // Status entity to allow history tracking and seeding
+    public class Status
     {
-        New = 0,
-        Pending = 1,
-        InProgress = 2,
-        Completed = 3,
-        Cancelled = 4
+        public int Id { get; set; }
+        public string Name { get; set; }
+
+        // Common statuses
+        public const string New = "New";
+        public const string InProgress = "InProgress";
+        public const string Completed = "Completed";
+        public const string Cancelled = "Cancelled";
     }
 }
