@@ -1,4 +1,4 @@
-name: .NET Build
+name: CI Build with detailed logs
 
 on:
   push:
@@ -9,52 +9,53 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      ACTIONS_STEP_DEBUG: 'true'
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '7.0.x'
+          dotnet-version: '8.0.x'
 
-      - name: Restore (detailed)
+      - name: Restore with detailed logging
+        if: always()
         run: |
           set -o pipefail
-          mkdir -p logs
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee logs/restore.log
+          echo "Restore start: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee restore.log
+          echo "Restore end: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        shell: bash
 
-      - name: Upload restore log
+      - name: Upload restore logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: restore-log
-          path: logs/restore.log
+          path: restore.log
 
-      - name: Build (no-restore, detailed)
+      - name: Build with detailed logging
+        if: always()
         run: |
           set -o pipefail
-          mkdir -p logs
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee logs/build.log
+          echo "Build start: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee build.log
+          echo "Build end: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        shell: bash
 
-      - name: Upload build log
+      - name: Upload build logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: logs/build.log
+          path: build.log
 
-      - name: Optional diagnostic logs (run when RUN_DIAGNOSTIC=true)
-        if: ${{ env.RUN_DIAGNOSTIC == 'true' }}
-        run: |
-          set -o pipefail
-          mkdir -p logs
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic 2>&1 | tee logs/restore-diagnostic.log
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic 2>&1 | tee logs/build-diagnostic.log
-
-      - name: Upload diagnostic logs
-        if: ${{ env.RUN_DIAGNOSTIC == 'true' }}
+      - name: Upload all logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: diagnostic-logs
+          name: all-logs
           path: |
-            logs/restore-diagnostic.log
-            logs/build-diagnostic.log
+            restore.log
+            build.log
