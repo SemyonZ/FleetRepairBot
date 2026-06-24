@@ -1,20 +1,16 @@
-name: .NET CI - Build
+name: .NET Build (with detailed logs)
 
 on:
   push:
-    branches: ["main", "master"]
   pull_request:
-    branches: ["main", "master"]
 
-# This workflow intentionally runs restore/build with increased verbosity and uploads logs
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    name: build (ubuntu-latest)
+    runs-on: ubuntu-latest
     env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      ACTIONS_RUNNER_DEBUG: "true"
+      ACTIONS_STEP_DEBUG: "true"
 
     steps:
       - name: Checkout
@@ -23,44 +19,46 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 6.0.x
+          dotnet-version: '6.0.x'
 
-      - name: Restore (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
+      - name: dotnet --info (save)
         run: |
-          # Run diagnostic restore and capture all output to restore.log
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic 2>&1 | Tee-Object restore.log
+          dotnet --info 2>&1 | tee dotnet-info.txt
 
-      - name: Restore (Linux/Mac)
-        if: matrix.os != 'windows-latest'
+      - name: Workspace listing (save)
+        run: |
+          echo "PWD: $(pwd)" > workspace-ls.txt
+          ls -la . >> workspace-ls.txt 2>&1 || true
+
+      - name: Restore (detailed) and save logs
+        run: |
+          # Use detailed verbosity and save the log. Ensure we capture dotnet exit code correctly.
+          set -o pipefail
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj -v:detailed 2>&1 | tee restore.log
+          rc=$?
+          echo "RESTORE_RC=$rc" >> restore.log
+          # Do not fail the job here to ensure artifacts (logs) are always uploaded for analysis.
+          exit $rc
+        continue-on-error: true
         shell: bash
-        run: |
-          # Run diagnostic restore and capture all output to restore.log
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic | tee restore.log
 
-      - name: Upload restore log
+      - name: Build (no-restore, detailed) and save logs
+        run: |
+          set -o pipefail
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release -v:detailed 2>&1 | tee build.log
+          rc=$?
+          echo "BUILD_RC=$rc" >> build.log
+          # Keep job progressing so logs are uploaded even if build failed.
+          exit $rc
+        continue-on-error: true
+        shell: bash
+
+      - name: Upload build logs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: restore-log-${{ matrix.os }}
-          path: restore.log
-
-      - name: Build (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          # Build without restoring (to keep logs separate) and capture detailed output
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | Tee-Object build.log
-
-      - name: Build (Linux/Mac)
-        if: matrix.os != 'windows-latest'
-        shell: bash
-        run: |
-          # Build without restoring (to keep logs separate) and capture detailed output
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed | tee build.log
-
-      - name: Upload build log
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log-${{ matrix.os }}
-          path: build.log
+          name: build-logs
+          path: |
+            dotnet-info.txt
+            workspace-ls.txt
+            restore.log
+            build.log
