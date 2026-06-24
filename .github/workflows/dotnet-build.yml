@@ -1,80 +1,89 @@
-name: .NET Build (detailed logs)
+name: .NET Build
 
 on:
   push:
-    branches: ['**']
+    branches: ["main", "master"]
   pull_request:
-    branches: ['**']
-  workflow_dispatch:
-    inputs:
-      debug:
-        description: 'Enable ACTIONS_STEP_DEBUG and extra diagnostics (true/false)'
-        required: false
-        default: 'false'
-
-env:
-  DOTNET_ROOT: /usr/share/dotnet
+    branches: ["main", "master"]
 
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        configuration: [Release]
     env:
-      CI_LOG_DIR: ci-logs
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 6.x
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
 
-      - name: Optionally enable ACTIONS_STEP_DEBUG (when triggered via workflow_dispatch with debug=true)
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug == 'true' }}
+      - name: Save environment
         run: |
-          echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
-          echo "Enabled ACTIONS_STEP_DEBUG via workflow_dispatch input. NOTE: use only for diagnostics."
+          env > environment.txt || true
 
-      - name: Collect dotnet info
+      - name: Dotnet --info
         run: |
-          mkdir -p "$CI_LOG_DIR"
-          dotnet --info > "$CI_LOG_DIR/dotnet-info.log" 2>&1 || true
-        shell: bash
+          dotnet --info > dotnet-info.txt || true
 
-      - name: Restore (detailed)
-        id: dotnet-restore
+      - name: Restore (diagnostic)
+        id: restore_step
+        run: |
+          # ensure we always produce logs even on failure
+          set -o pipefail
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic > restore.log 2>&1 || true
+          echo $? > restore_exit.code
+
+      - name: Build (diagnostic + binlog)
+        id: build_step
         run: |
           set -o pipefail
-          mkdir -p "$CI_LOG_DIR"
-          echo "Running: dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic"
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic 2>&1 | tee "$CI_LOG_DIR/restore.log"
-        shell: bash
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration ${{ matrix.configuration }} --verbosity diagnostic /bl:msbuild.binlog > build.log 2>&1 || true
+          echo $? > build_exit.code
 
-      - name: Build (no-restore, detailed)
-        id: dotnet-build
-        run: |
-          set -o pipefail
-          mkdir -p "$CI_LOG_DIR"
-          echo "Running: dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic 2>&1 | tee "$CI_LOG_DIR/build.log"
-        shell: bash
-
-      - name: Upload CI logs (always)
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-logs
-          path: ci-logs
+          name: build-logs-${{ github.run_id }}
+          path: |
+            restore.log
+            build.log
+            msbuild.binlog
+            dotnet-info.txt
+            environment.txt
+            restore_exit.code
+            build_exit.code
 
-      - name: Print tail of logs on failure
-        if: failure()
+      - name: Fail if restore/build failed
         run: |
-          echo "==== DOTNET INFO ===="
-          if [ -f "$CI_LOG_DIR/dotnet-info.log" ]; then tail -n 200 "$CI_LOG_DIR/dotnet-info.log" || true; else echo "no dotnet-info.log"; fi
+          restore_code=0
+          build_code=0
+          if [ -f restore_exit.code ]; then restore_code=$(cat restore_exit.code); fi
+          if [ -f build_exit.code ]; then build_code=$(cat build_exit.code); fi
 
-          echo "==== RESTORE LOG (last 200 lines) ===="
-          if [ -f "$CI_LOG_DIR/restore.log" ]; then tail -n 200 "$CI_LOG_DIR/restore.log" || true; else echo "no restore.log"; fi
+          echo "Restore exit code: $restore_code"
+          echo "Build exit code: $build_code"
 
-          echo "==== BUILD LOG (last 200 lines) ===="
-          if [ -f "$CI_LOG_DIR/build.log" ]; then tail -n 200 "$CI_LOG_DIR/build.log" || true; else echo "no build.log"; fi
-        shell: bash
+          # Prefer reporting build failure if both failed
+          if [ "$restore_code" -ne 0 ] || [ "$build_code" -ne 0 ]; then
+            if [ "$build_code" -ne 0 ]; then
+              echo "Build failed with exit code $build_code"
+              exit $build_code
+            else
+              echo "Restore failed with exit code $restore_code"
+              exit $restore_code
+            fi
+          fi
+
+      - name: Success
+        if: success()
+        run: echo "Build completed successfully and logs uploaded."
