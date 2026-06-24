@@ -1,51 +1,72 @@
-name: .NET Build (detailed + binary logs)
+name: .NET Build
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   build:
-    name: Build
+    name: Build (detailed + binary msbuild log)
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET SDK
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '7.0.x'
 
-      - name: Restore (detailed)
-        id: restore
+      - name: Restore (detailed) and capture logs
+        shell: bash
         run: |
-          echo "Running: dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed"
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1
+          set -euo pipefail
+          export DOTNET_CLI_TELEMETRY_OPTOUT=1
+          dotnet --info
+          echo "Running dotnet restore..."
+          # Detailed textual restore output saved to restore.log
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee restore.log
+          RESTORE_EXIT=${PIPESTATUS[0]}
+          # Persist restore exit code for later steps
+          echo $RESTORE_EXIT > restore_exit.code || true
+          if [ "$RESTORE_EXIT" -ne 0 ]; then
+            echo "dotnet restore failed with exit code $RESTORE_EXIT"
+          else
+            echo "dotnet restore succeeded"
+          fi
 
-      - name: Build (detailed + binary msbuild log)
-        id: build_step
+      - name: Build (diagnostic + binary msbuild log)
+        shell: bash
         run: |
-          echo "Running: dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /bl:msbuild.binlog"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /bl:msbuild.binlog > build.log 2>&1
+          set -euo pipefail
+          export DOTNET_CLI_TELEMETRY_OPTOUT=1
+          # If restore failed, skip build and exit non-zero so job reflects failure.
+          if [ -f restore_exit.code ] && [ "$(cat restore_exit.code)" -ne 0 ]; then
+            echo "Skipping build because restore failed"
+            exit 1
+          fi
+          echo "Running dotnet build..."
+          # Produce both diagnostic textual build.log and binary MSBuild binlog build.binlog
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic /bl:build.binlog 2>&1 | tee build.log
 
-      - name: Show last lines of logs for quick UI inspection
+      - name: Normalize artifacts for upload
         if: always()
+        shell: bash
         run: |
-          echo "===== restore.log (last 2000 lines) ====="
-          tail -n 2000 restore.log || true
-          echo "===== build.log (last 2000 lines) ====="
-          tail -n 2000 build.log || true
+          # Ensure artifact files exist so upload step does not fail if one is missing
+          for f in restore.log build.log build.binlog; do
+            if [ ! -f "$f" ]; then
+              echo "$f not found, creating stub" > "$f"
+            fi
+          done
 
-      - name: Upload build artifacts (logs + msbuild binary log)
+      - name: Upload build artifacts (logs and binlog)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: dotnet-build-logs
           path: |
             restore.log
             build.log
-            msbuild.binlog
+            build.binlog
