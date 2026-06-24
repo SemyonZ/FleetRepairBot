@@ -21,7 +21,7 @@ jobs:
         dotnet-version: ['6.0.x']
     env:
       # Optional: set to 'true' via workflow_dispatch input to enable step debug
-      ACTIONS_STEP_DEBUG: ${{ inputs.debug }}
+      ACTIONS_STEP_DEBUG: ${{ inputs.debug || 'false' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
