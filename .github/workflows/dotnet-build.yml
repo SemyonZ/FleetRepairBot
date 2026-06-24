@@ -2,15 +2,16 @@ name: .NET Build
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: 1
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,20 +19,30 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
+          dotnet-version: '8.0.x'
 
-      - name: Restore (diagnostic)
+      - name: Restore (detailed)
         run: |
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic > restore.log 2>&1 || (cat restore.log && exit 1)
+          set -e
+          echo "Running dotnet restore with detailed verbosity"
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || (echo "dotnet restore failed, printing restore.log" && cat restore.log && exit 1)
 
-      - name: Build (diagnostic)
-        run: |
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic > build.log 2>&1 || (cat build.log && exit 1)
-
-      - name: Upload logs
+      - name: Upload restore logs
         uses: actions/upload-artifact@v4
         with:
-          name: ci-logs
+          name: restore-logs
+          path: restore.log
+
+      - name: Build (detailed + binary msbuild log)
+        run: |
+          set -e
+          echo "Running dotnet build with detailed verbosity and binary msbuild log"
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /bl:build.binlog > build.log 2>&1 || (echo "dotnet build failed, printing build.log" && cat build.log && exit 1)
+
+      - name: Upload build logs and binlog
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
           path: |
-            restore.log
             build.log
+            build.binlog
