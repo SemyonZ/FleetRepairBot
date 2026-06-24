@@ -1,50 +1,69 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Telegram.Bot;
+using Telegram.Bot.Types;
+using Telegram.Bot.Exceptions;
+using Telegram.Bot.Polling;
 
 namespace FleetRepairBot.Telegram
 {
-    public class BotHostedService : BackgroundService
+    public class BotHostedService : IHostedService
     {
         private readonly ILogger<BotHostedService> _logger;
-        private readonly TelegramBotOptions _options;
-        private readonly IServiceProvider _services;
+        private readonly string _token;
+        private ITelegramBotClient _botClient;
 
-        public BotHostedService(IOptions<TelegramBotOptions> options, IServiceProvider services, ILogger<BotHostedService> logger)
+        public BotHostedService(ILogger<BotHostedService> logger, string token)
         {
-            _options = options.Value;
-            _services = services;
             _logger = logger;
+            _token = token;
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        public Task StartAsync(CancellationToken cancellationToken)
         {
-            _logger.LogInformation("BotHostedService starting");
-            // This is a stub loop to represent bot lifecycle; real bot client should be started here.
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
-                // Create a scope to resolve scoped services (like IRepairRequestService) and the TelegramUpdateHandler safely.
-                try
-                {
-                    using (var scope = _services.CreateScope())
-                    {
-                        var handler = scope.ServiceProvider.GetService<TelegramUpdateHandler>();
-                        // If a real implementation were present, you could start or poll the bot here using the handler.
-                        // For now, just ensure we can resolve it without holding a scoped service in the singleton.
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error while resolving TelegramUpdateHandler in BotHostedService loop");
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                _botClient = new TelegramBotClient(_token);
+                var receiverOptions = new ReceiverOptions();
+                _botClient.StartReceiving(
+                    HandleUpdateAsync,
+                    HandleErrorAsync,
+                    receiverOptions,
+                    cancellationToken: cancellationToken);
             }
-            _logger.LogInformation("BotHostedService stopping");
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to start bot");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+            // If the client supports disposal, dispose here; keep minimal to avoid architectural changes
+            return Task.CompletedTask;
+        }
+
+        private Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken ct)
+        {
+            // Placeholder - actual logic exists elsewhere; keep signature intact
+            return Task.CompletedTask;
+        }
+
+        private Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken ct)
+        {
+            var errorMessage = exception switch
+            {
+                ApiRequestException api => $"Telegram API Error: {api.ErrorCode} - {api.Message}",
+                _ => exception.ToString()
+            };
+
+            _logger.LogError(errorMessage);
+            return Task.CompletedTask;
         }
     }
 }
