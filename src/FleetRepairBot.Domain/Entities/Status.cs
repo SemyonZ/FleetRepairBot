@@ -1,5 +1,3 @@
-using System;
-
 namespace FleetRepairBot.Domain.Entities
 {
     public enum Status
