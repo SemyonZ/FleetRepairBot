@@ -7,19 +7,23 @@ namespace FleetRepairBot.Domain.Entities
     public class RepairRequest
     {
         public int Id { get; set; }
+
+        // Short title for UI
         public string Title { get; set; }
+
         public string Description { get; set; }
 
-        public int VehicleId { get; set; }
+        public int? VehicleId { get; set; }
         public Vehicle Vehicle { get; set; }
 
-        public int DriverId { get; set; }
+        public int? DriverId { get; set; }
         public Driver Driver { get; set; }
 
         // Assigned dispatcher (optional)
         public int? DispatcherId { get; set; }
         public Dispatcher Dispatcher { get; set; }
 
+        // Status reference (optional for MVP)
         public int StatusId { get; set; }
         public Status Status { get; set; }
 
