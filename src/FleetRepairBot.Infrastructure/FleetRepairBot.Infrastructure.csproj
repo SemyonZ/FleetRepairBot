@@ -1,1 +1,11 @@
-/* content omitted in packaging */
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FleetRepairBot.Domain\FleetRepairBot.Domain.csproj" Condition="Exists('..\\FleetRepairBot.Domain\\FleetRepairBot.Domain.csproj')" />
+  </ItemGroup>
+</Project>
