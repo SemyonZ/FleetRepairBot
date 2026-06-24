@@ -1,46 +1,34 @@
-using System;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Configuration;
+using FleetRepairBot.Data;
+using FleetRepairBot.Data.Repositories;
+using FleetRepairBot.Infrastructure;
+using FleetRepairBot.Services;
+using FleetRepairBot.Telegram;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.EntityFrameworkCore;
-using FleetRepairBot.Telegram;
-using FleetRepairBot.Data;
+using System.IO;
 
-// Note: This Program.cs registers DB context (SQL Server), Telegram handler and hosted service.
-// Some repository/service/file-storage registrations were removed because corresponding implementations
-// are not present in the package. TODO: add implementations and re-register them.
+var host = Host.CreateDefaultBuilder(args)
+    .ConfigureServices((context, services) =>
+    {
+        // Use in-memory DB for simplicity; replace with real provider via configuration
+        services.AddDbContext<FleetRepairDbContext>(opt => opt.UseInMemoryDatabase("FleetRepair"));
 
-var builder = WebApplication.CreateBuilder(args);
-var configuration = builder.Configuration;
+        services.AddScoped<IRepairRequestRepository, RepairRequestRepository>();
+        services.AddScoped<IDriverRepository, DriverRepository>();
+        services.AddScoped<IVehicleRepository, VehicleRepository>();
 
-// Configure options from appsettings
-builder.Services.Configure<TelegramBotOptions>(configuration.GetSection("TelegramBot"));
+        services.AddScoped<IRepairRequestService, RepairRequestService>();
 
-// Register DbContext - SQL Server (no InMemory)
-// Ensure the connection string exists in appsettings.json under ConnectionStrings:DefaultConnection
-builder.Services.AddDbContext<FleetRepairDbContext>(options =>
-    options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+        var filesRoot = Path.Combine(Directory.GetCurrentDirectory(), "files");
+        services.AddSingleton<IFileStorage>(sp => new FileSystemStorage(filesRoot));
 
-// NOTE: The application originally attempted to register IRepairRequestRepository/IRepairRequestService and IFileStorage
-// but the concrete implementations are not present in this package. To keep the project buildable and runnable,
-// these registrations are temporarily omitted. When implementations are added, register them here.
-// Example TODO:
-// builder.Services.AddScoped<IRepairRequestRepository, RepairRequestRepository>();
-// builder.Services.AddScoped<IRepairRequestService, RepairRequestService>();
-// builder.Services.AddSingleton<IFileStorage, FileSystemStorage>();
+        services.Configure<TelegramBotOptions>(context.Configuration.GetSection("Telegram"));
+        // TelegramUpdateHandler depends on scoped services (IRepairRequestService), so register it as scoped.
+        services.AddScoped<TelegramUpdateHandler>();
+        // BotHostedService will create scopes when it needs to resolve the handler, so it's safe to register it as hosted service.
+        services.AddHostedService<BotHostedService>();
+    })
+    .Build();
 
-// Telegram handler and hosted service
-builder.Services.AddSingleton<TelegramUpdateHandler>();
-builder.Services.AddHostedService<BotHostedService>();
-
-// Add controllers or minimal API endpoints as needed
-builder.Services.AddControllers();
-
-var app = builder.Build();
-
-app.MapGet("/", () => Results.Text("FleetRepairBot Web API is running."));
-
-app.MapControllers();
-
-app.Run();
+await host.RunAsync();
