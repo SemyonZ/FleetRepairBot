@@ -1,15 +1,17 @@
-using FleetRepairBot.Domain.Entities;
-using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
+using FleetRepairBot.Domain.Entities;
 
 namespace FleetRepairBot.Services
 {
     public interface IRepairRequestService
     {
-        Task<RepairRequest> CreateRequestAsync(Guid vehicleId, Guid? driverId, string description);
-        Task<RepairRequest> GetRequestAsync(Guid id);
-        Task UpdateStatusAsync(Guid id, Status newStatus, string changedBy);
-        Task<RequestPhoto> AddPhotoAsync(Guid requestId, Stream content, string fileName);
+        Task<RepairRequest> CreateAsync(RepairRequest request, CancellationToken ct = default);
+        Task<RepairRequest> GetByIdAsync(int id, CancellationToken ct = default);
+        Task<IEnumerable<RepairRequest>> GetByDriverAsync(int driverId, CancellationToken ct = default);
+        Task AddPhotoAsync(int requestId, Stream photoStream, string fileName, long performedByTelegramId, CancellationToken ct = default);
+        Task ChangeStatusAsync(int requestId, int statusId, int? dispatcherId, long performedByTelegramId, string details = null, CancellationToken ct = default);
     }
 }
