@@ -1,4 +1,4 @@
-name: .NET Build
+name: .NET CI - Build
 
 on:
   push:
@@ -6,16 +6,15 @@ on:
   pull_request:
     branches: ["main", "master"]
 
+# This workflow intentionally runs restore/build with increased verbosity and uploads logs
 jobs:
   build:
-    name: Build
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        configuration: [Release]
+        os: [ubuntu-latest, windows-latest]
     env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
     steps:
       - name: Checkout
@@ -24,66 +23,44 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '6.0.x'
+          dotnet-version: 6.0.x
 
-      - name: Save environment
+      - name: Restore (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          env > environment.txt || true
+          # Run diagnostic restore and capture all output to restore.log
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic 2>&1 | Tee-Object restore.log
 
-      - name: Dotnet --info
+      - name: Restore (Linux/Mac)
+        if: matrix.os != 'windows-latest'
+        shell: bash
         run: |
-          dotnet --info > dotnet-info.txt || true
+          # Run diagnostic restore and capture all output to restore.log
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic | tee restore.log
 
-      - name: Restore (diagnostic)
-        id: restore_step
-        run: |
-          # ensure we always produce logs even on failure
-          set -o pipefail
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic > restore.log 2>&1 || true
-          echo $? > restore_exit.code
-
-      - name: Build (diagnostic + binlog)
-        id: build_step
-        run: |
-          set -o pipefail
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration ${{ matrix.configuration }} --verbosity diagnostic /bl:msbuild.binlog > build.log 2>&1 || true
-          echo $? > build_exit.code
-
-      - name: Upload build logs
-        if: always()
+      - name: Upload restore log
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs-${{ github.run_id }}
-          path: |
-            restore.log
-            build.log
-            msbuild.binlog
-            dotnet-info.txt
-            environment.txt
-            restore_exit.code
-            build_exit.code
+          name: restore-log-${{ matrix.os }}
+          path: restore.log
 
-      - name: Fail if restore/build failed
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          restore_code=0
-          build_code=0
-          if [ -f restore_exit.code ]; then restore_code=$(cat restore_exit.code); fi
-          if [ -f build_exit.code ]; then build_code=$(cat build_exit.code); fi
+          # Build without restoring (to keep logs separate) and capture detailed output
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | Tee-Object build.log
 
-          echo "Restore exit code: $restore_code"
-          echo "Build exit code: $build_code"
+      - name: Build (Linux/Mac)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          # Build without restoring (to keep logs separate) and capture detailed output
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed | tee build.log
 
-          # Prefer reporting build failure if both failed
-          if [ "$restore_code" -ne 0 ] || [ "$build_code" -ne 0 ]; then
-            if [ "$build_code" -ne 0 ]; then
-              echo "Build failed with exit code $build_code"
-              exit $build_code
-            else
-              echo "Restore failed with exit code $restore_code"
-              exit $restore_code
-            fi
-          fi
-
-      - name: Success
-        if: success()
-        run: echo "Build completed successfully and logs uploaded."
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ matrix.os }}
+          path: build.log
