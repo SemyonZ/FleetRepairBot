@@ -1,4 +1,4 @@
-name: CI Build with detailed logs
+name: .NET Build
 
 on:
   push:
@@ -10,25 +10,27 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       ACTIONS_STEP_DEBUG: 'true'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
-      - name: Setup .NET SDK
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore with detailed logging
-        if: always()
+      - name: Dotnet info
         run: |
-          set -o pipefail
-          echo "Restore start: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee restore.log
-          echo "Restore end: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-        shell: bash
+          dotnet --info > dotnet-info.log 2>&1 || true
 
-      - name: Upload restore logs
+      - name: Restore with detailed logging
+        run: |
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || (cat restore.log && exit 1)
+
+      - name: Upload restore log
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -36,26 +38,19 @@ jobs:
           path: restore.log
 
       - name: Build with detailed logging
-        if: always()
         run: |
-          set -o pipefail
-          echo "Build start: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee build.log
-          echo "Build end: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-        shell: bash
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1 || (cat build.log && exit 1)
 
-      - name: Upload build logs
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
           path: build.log
 
-      - name: Upload all logs
+      - name: Upload dotnet info
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: all-logs
-          path: |
-            restore.log
-            build.log
+          name: dotnet-info
+          path: dotnet-info.log
