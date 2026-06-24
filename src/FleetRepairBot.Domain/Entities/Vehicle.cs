@@ -4,8 +4,10 @@ namespace FleetRepairBot.Domain.Entities
 {
     public class Vehicle
     {
-        public int Id { get; set; }
-        public string PlateNumber { get; set; }
+        public Guid Id { get; set; }
+        public string RegistrationNumber { get; set; }
         public string Model { get; set; }
+        public string Vin { get; set; }
+        public string Notes { get; set; }
     }
 }
