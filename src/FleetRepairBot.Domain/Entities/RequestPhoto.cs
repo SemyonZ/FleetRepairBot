@@ -4,21 +4,12 @@ namespace FleetRepairBot.Domain.Entities
 {
     public class RequestPhoto
     {
-        public Guid Id { get; private set; }
-        public Guid RepairRequestId { get; private set; }
-        public string Path { get; private set; }
-        public string ThumbnailPath { get; private set; }
-        public DateTime UploadedAt { get; private set; }
+        public int Id { get; set; }
+        public int RepairRequestId { get; set; }
+        public RepairRequest RepairRequest { get; set; }
 
-        protected RequestPhoto() { }
-
-        public RequestPhoto(Guid repairRequestId, string path, string thumbnailPath = null)
-        {
-            Id = Guid.NewGuid();
-            RepairRequestId = repairRequestId;
-            Path = path ?? throw new ArgumentNullException(nameof(path));
-            ThumbnailPath = thumbnailPath;
-            UploadedAt = DateTime.UtcNow;
-        }
+        // Stored path or URL to the uploaded photo
+        public string FilePath { get; set; }
+        public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
     }
 }
