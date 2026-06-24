@@ -1,58 +1,80 @@
-name: .NET Build
+name: .NET Build (detailed logs)
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["**"]
   pull_request:
-    branches: ["main", "master"]
+    branches: ["**"]
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable ACTIONS_STEP_DEBUG and extra diagnostics (true/false)'
+        required: false
+        default: 'false'
+
+env:
+  DOTNET_ROOT: /usr/share/dotnet
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    env:
+      CI_LOG_DIR: ci-logs
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET 6.x
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
 
-      - name: Print environment and dotnet info
-        shell: bash
+      - name: Optionally enable ACTIONS_STEP_DEBUG (when triggered via workflow_dispatch with debug=true)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug == 'true' }}
         run: |
-          echo "=== GITHUB ENV ===" > env.txt
-          printenv >> env.txt || true
-          echo "=== RUNNER FILES ===" > runner-files.txt
-          ls -la >> runner-files.txt || true
-          echo "=== DOTNET INFO ===" > dotnet-info.txt
-          dotnet --info >> dotnet-info.txt 2>&1 || true
-          dotnet --list-sdks > sdks.txt 2>&1 || true
+          echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
+          echo "Enabled ACTIONS_STEP_DEBUG via workflow_dispatch input. NOTE: use only for diagnostics."
+
+      - name: Collect dotnet info
+        run: |
+          mkdir -p "$CI_LOG_DIR"
+          dotnet --info > "$CI_LOG_DIR/dotnet-info.log" 2>&1 || true
+        shell: bash
 
       - name: Restore (detailed)
-        shell: bash
+        id: dotnet-restore
         run: |
           set -o pipefail
+          mkdir -p "$CI_LOG_DIR"
           echo "Running: dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic"
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic |& tee restore.log
-
-      - name: Build (detailed, no-restore)
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic 2>&1 | tee "$CI_LOG_DIR/restore.log"
         shell: bash
+
+      - name: Build (no-restore, detailed)
+        id: dotnet-build
         run: |
           set -o pipefail
+          mkdir -p "$CI_LOG_DIR"
           echo "Running: dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic |& tee build.log
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic 2>&1 | tee "$CI_LOG_DIR/build.log"
+        shell: bash
 
-      - name: Upload logs (always)
+      - name: Upload CI logs (always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dotnet-logs
-          path: |
-            restore.log
-            build.log
-            dotnet-info.txt
-            sdks.txt
-            env.txt
-            runner-files.txt
+          name: ci-logs
+          path: ci-logs
+
+      - name: Print tail of logs on failure
+        if: failure()
+        run: |
+          echo "==== DOTNET INFO ===="
+          if [ -f "$CI_LOG_DIR/dotnet-info.log" ]; then tail -n 200 "$CI_LOG_DIR/dotnet-info.log" || true; else echo "no dotnet-info.log"; fi
+
+          echo "==== RESTORE LOG (last 200 lines) ===="
+          if [ -f "$CI_LOG_DIR/restore.log" ]; then tail -n 200 "$CI_LOG_DIR/restore.log" || true; else echo "no restore.log"; fi
+
+          echo "==== BUILD LOG (last 200 lines) ===="
+          if [ -f "$CI_LOG_DIR/build.log" ]; then tail -n 200 "$CI_LOG_DIR/build.log" || true; else echo "no build.log"; fi
+        shell: bash
