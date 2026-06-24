@@ -4,10 +4,12 @@ namespace FleetRepairBot.Domain.Entities
 {
     public class AuditLog
     {
-        public int Id { get; set; }
-        public string Entity { get; set; }
+        public Guid Id { get; set; }
+        public string EntityName { get; set; }
+        public Guid EntityId { get; set; }
         public string Action { get; set; }
-        public string Data { get; set; }
-        public DateTime OccurredAt { get; set; }
+        public string Details { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public long? PerformedByTelegramId { get; set; }
     }
 }
