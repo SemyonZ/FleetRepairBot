@@ -4,8 +4,12 @@ namespace FleetRepairBot.Domain.Entities
 {
     public class Driver
     {
-        public int Id { get; set; }
-        public string Name { get; set; } = string.Empty;
-        public string Phone { get; set; } = string.Empty;
+        public Guid Id { get; set; }
+        public string Name { get; set; }
+        public string Phone { get; set; }
+        public long TelegramId { get; set; }
+
+        // optional: display or notes
+        public string Notes { get; set; }
     }
 }
