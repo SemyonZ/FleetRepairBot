@@ -6,8 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\FleetRepairBot.Domain\FleetRepairBot.Domain.csproj" />
     <ProjectReference Include="..\FleetRepairBot.Data\FleetRepairBot.Data.csproj" />
     <ProjectReference Include="..\FleetRepairBot.Infrastructure\FleetRepairBot.Infrastructure.csproj" />
+    <ProjectReference Include="..\FleetRepairBot.Domain\FleetRepairBot.Domain.csproj" />
   </ItemGroup>
 </Project>
