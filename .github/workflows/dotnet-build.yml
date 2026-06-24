@@ -1,27 +1,18 @@
-name: .NET Build (detailed + binary msbuild log)
+name: .NET Build
 
 on:
-  workflow_dispatch:
-    inputs:
-      debug:
-        description: 'Enable ACTIONS_STEP_DEBUG (true/false) to increase runner debug verbosity'
-        required: false
-        default: 'false'
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
   build:
-    name: Build (detailed + binary msbuild log)
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        dotnet-version: ['6.0.x']
+    runs-on: ubuntu-latest
     env:
-      # Optional: set to 'true' via workflow_dispatch input to enable step debug
-      ACTIONS_STEP_DEBUG: ${{ inputs.debug || 'false' }}
+      CI: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,63 +20,47 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ matrix.dotnet-version }}
+          dotnet-version: '6.0.x'
 
-      - name: Restore (detailed) - Linux
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
+      - name: Show .NET info
+        run: dotnet --info
+
+      - name: Restore (detailed)
         run: |
-          set -e
-          echo "Running dotnet restore (detailed) for src/FleetRepairBot.Web/FleetRepairBot.Web.csproj"
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || true
-          echo "Restore exit code: $?"
+          set -euo pipefail
+          echo "Running: dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed"
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || (
+            echo "dotnet restore failed"
+            cat restore.log
+            exit 1
+          )
 
-      - name: Restore (detailed) - Windows
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Write-Host "Running dotnet restore (detailed) for src/FleetRepairBot.Web/FleetRepairBot.Web.csproj"
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | Tee-Object -FilePath restore.log
-
-      - name: Build (detailed + binlog) - Linux
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: |
-          set -e
-          echo "Running dotnet build (detailed) with binary msbuild log"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release -v:detailed -bl:msbuild.binlog > build.log 2>&1 || true
-          echo "Build exit code: $?"
-
-      - name: Build (detailed + binlog) - Windows
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Write-Host "Running dotnet build (detailed) with binary msbuild log"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release -v:detailed -bl:msbuild.binlog 2>&1 | Tee-Object -FilePath build.log
-
-      - name: List logs (for debug)
-        shell: bash
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          echo "---- restore.log ----"
-          sed -n '1,200p' restore.log || true
-          echo "---- build.log ----"
-          sed -n '1,200p' build.log || true
-
-      - name: List logs (for debug) - Windows
-        shell: pwsh
-        if: matrix.os == 'windows-latest'
-        run: |
-          Write-Host "---- restore.log ----"
-          Get-Content restore.log -TotalCount 200 -ErrorAction SilentlyContinue
-          Write-Host "---- build.log ----"
-          Get-Content build.log -TotalCount 200 -ErrorAction SilentlyContinue
-
-      - name: Upload logs and binlog
+      - name: Upload restore.log
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs-${{ matrix.os }}
-          path: |
-            restore.log
-            build.log
-            msbuild.binlog
+          name: restore-log
+          path: restore.log
+
+      - name: Build (detailed + binlog)
+        run: |
+          set -euo pipefail
+          echo "Running: dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /v:d /bl:build.binlog"
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /v:d /bl:build.binlog > build.log 2>&1 || (
+            echo "dotnet build failed"
+            cat build.log
+            # keep binlog if produced for diagnostics
+            exit 1
+          )
+
+      - name: Upload build.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+
+      - name: Upload build.binlog (if present)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-binlog
+          path: build.binlog
