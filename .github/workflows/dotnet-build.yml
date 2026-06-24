@@ -2,16 +2,13 @@ name: .NET Build
 
 on:
   push:
-    branches: [ main ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ main ]
+    branches: ["main", "master"]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      CI: true
-      DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
     steps:
       - name: Checkout repository
@@ -22,45 +19,40 @@ jobs:
         with:
           dotnet-version: '6.0.x'
 
-      - name: Show .NET info
-        run: dotnet --info
+      - name: Print environment and dotnet info
+        shell: bash
+        run: |
+          echo "=== GITHUB ENV ===" > env.txt
+          printenv >> env.txt || true
+          echo "=== RUNNER FILES ===" > runner-files.txt
+          ls -la >> runner-files.txt || true
+          echo "=== DOTNET INFO ===" > dotnet-info.txt
+          dotnet --info >> dotnet-info.txt 2>&1 || true
+          dotnet --list-sdks > sdks.txt 2>&1 || true
 
       - name: Restore (detailed)
+        shell: bash
         run: |
-          set -euo pipefail
-          echo "Running: dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed"
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || (
-            echo "dotnet restore failed"
-            cat restore.log
-            exit 1
-          )
+          set -o pipefail
+          echo "Running: dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic"
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic |& tee restore.log
 
-      - name: Upload restore.log
-        uses: actions/upload-artifact@v4
-        with:
-          name: restore-log
-          path: restore.log
-
-      - name: Build (detailed + binlog)
+      - name: Build (detailed, no-restore)
+        shell: bash
         run: |
-          set -euo pipefail
-          echo "Running: dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /v:d /bl:build.binlog"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /v:d /bl:build.binlog > build.log 2>&1 || (
-            echo "dotnet build failed"
-            cat build.log
-            # keep binlog if produced for diagnostics
-            exit 1
-          )
+          set -o pipefail
+          echo "Running: dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic"
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic |& tee build.log
 
-      - name: Upload build.log
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-
-      - name: Upload build.binlog (if present)
+      - name: Upload logs (always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-binlog
-          path: build.binlog
+          name: dotnet-logs
+          path: |
+            restore.log
+            build.log
+            dotnet-info.txt
+            sdks.txt
+            env.txt
+            runner-files.txt
