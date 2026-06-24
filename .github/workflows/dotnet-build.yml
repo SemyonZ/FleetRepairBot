@@ -2,55 +2,36 @@ name: .NET Build
 
 on:
   push:
+    branches: [ main, master ]
   pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      ACTIONS_STEP_DEBUG: 'true'
-
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '8.x'
 
-      - name: Dotnet info
+      - name: Restore (diagnostic)
         run: |
-          dotnet --info > dotnet-info.log 2>&1 || true
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic > restore.log 2>&1 || (cat restore.log && exit 1)
 
-      - name: Restore with detailed logging
+      - name: Build (diagnostic)
         run: |
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || (cat restore.log && exit 1)
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic > build.log 2>&1 || (cat build.log && exit 1)
 
-      - name: Upload restore log
-        if: always()
+      - name: Upload logs
         uses: actions/upload-artifact@v4
         with:
-          name: restore-log
-          path: restore.log
-
-      - name: Build with detailed logging
-        run: |
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1 || (cat build.log && exit 1)
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-
-      - name: Upload dotnet info
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dotnet-info
-          path: dotnet-info.log
+          name: ci-logs
+          path: |
+            restore.log
+            build.log
