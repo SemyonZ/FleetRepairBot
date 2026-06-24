@@ -1,22 +1,46 @@
-using FleetRepairBot.Domain.Entities;
-using Microsoft.EntityFrameworkCore;
-using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using FleetRepairBot.Domain.Entities;
 
 namespace FleetRepairBot.Data.Repositories
 {
     public class VehicleRepository : IVehicleRepository
     {
-        private readonly FleetRepairDbContext _db;
-        public VehicleRepository(FleetRepairDbContext db) => _db = db;
+        private readonly FleetRepairDbContext _context;
 
-        public async Task AddAsync(Vehicle vehicle) => await _db.Vehicles.AddAsync(vehicle);
-        public async Task<Vehicle> GetByIdAsync(Guid id) => await _db.Vehicles.FirstOrDefaultAsync(v => v.Id == id);
-        public Task UpdateAsync(Vehicle vehicle)
+        public VehicleRepository(FleetRepairDbContext context)
         {
-            _db.Vehicles.Update(vehicle);
-            return Task.CompletedTask;
+            _context = context;
         }
-        public async Task SaveChangesAsync() => await _db.SaveChangesAsync();
+
+        public async Task<Vehicle> GetByIdAsync(int id, CancellationToken ct = default)
+        {
+            return await _context.Vehicles.FindAsync(new object[] { id }, ct);
+        }
+
+        public async Task<Vehicle> GetByVinAsync(string vin, CancellationToken ct = default)
+        {
+            return await _context.Vehicles.FirstOrDefaultAsync(v => v.VIN == vin, ct);
+        }
+
+        public async Task<IEnumerable<Vehicle>> GetAllAsync(CancellationToken ct = default)
+        {
+            return await _context.Vehicles.OrderBy(v => v.LicensePlate).ToListAsync(ct);
+        }
+
+        public async Task AddAsync(Vehicle vehicle, CancellationToken ct = default)
+        {
+            await _context.Vehicles.AddAsync(vehicle, ct);
+            await _context.SaveChangesAsync(ct);
+        }
+
+        public async Task UpdateAsync(Vehicle vehicle, CancellationToken ct = default)
+        {
+            _context.Vehicles.Update(vehicle);
+            await _context.SaveChangesAsync(ct);
+        }
     }
 }
