@@ -4,8 +4,14 @@ namespace FleetRepairBot.Domain.Entities
 {
     public class RequestPhoto
     {
-        public int Id { get; set; }
-        public int RepairRequestId { get; set; }
-        public string FilePath { get; set; }
+        public Guid Id { get; set; }
+        public Guid RepairRequestId { get; set; }
+        public RepairRequest RepairRequest { get; set; }
+
+        // stored path or blob key
+        public string FileName { get; set; }
+        public string ContentType { get; set; }
+        public long? SizeBytes { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 }
