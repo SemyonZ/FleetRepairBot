@@ -1,22 +1,46 @@
-using FleetRepairBot.Domain.Entities;
-using Microsoft.EntityFrameworkCore;
-using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using FleetRepairBot.Domain.Entities;
 
 namespace FleetRepairBot.Data.Repositories
 {
     public class DriverRepository : IDriverRepository
     {
-        private readonly FleetRepairDbContext _db;
-        public DriverRepository(FleetRepairDbContext db) => _db = db;
+        private readonly FleetRepairDbContext _context;
 
-        public async Task AddAsync(Driver driver) => await _db.Drivers.AddAsync(driver);
-        public async Task<Driver> GetByIdAsync(Guid id) => await _db.Drivers.FirstOrDefaultAsync(d => d.Id == id);
-        public Task UpdateAsync(Driver driver)
+        public DriverRepository(FleetRepairDbContext context)
         {
-            _db.Drivers.Update(driver);
-            return Task.CompletedTask;
+            _context = context;
         }
-        public async Task SaveChangesAsync() => await _db.SaveChangesAsync();
+
+        public async Task<Driver> GetByIdAsync(int id, CancellationToken ct = default)
+        {
+            return await _context.Drivers.FindAsync(new object[] { id }, ct);
+        }
+
+        public async Task<Driver> GetByTelegramIdAsync(long telegramId, CancellationToken ct = default)
+        {
+            return await _context.Drivers.FirstOrDefaultAsync(d => d.TelegramId == telegramId, ct);
+        }
+
+        public async Task<IEnumerable<Driver>> GetAllAsync(CancellationToken ct = default)
+        {
+            return await _context.Drivers.OrderBy(d => d.Name).ToListAsync(ct);
+        }
+
+        public async Task AddAsync(Driver driver, CancellationToken ct = default)
+        {
+            await _context.Drivers.AddAsync(driver, ct);
+            await _context.SaveChangesAsync(ct);
+        }
+
+        public async Task UpdateAsync(Driver driver, CancellationToken ct = default)
+        {
+            _context.Drivers.Update(driver);
+            await _context.SaveChangesAsync(ct);
+        }
     }
 }
