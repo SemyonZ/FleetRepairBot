@@ -1,4 +1,4 @@
-name: .NET Build (diagnostic)
+name: .NET Build
 
 on:
   push:
@@ -6,9 +6,9 @@ on:
 
 jobs:
   build:
-    name: Build
     runs-on: ubuntu-latest
-
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,56 +18,43 @@ jobs:
         with:
           dotnet-version: '7.0.x'
 
-      - name: Restore (detailed) and capture log
-        id: restore
+      - name: Restore (detailed)
         run: |
-          set -euo pipefail
-          echo "Collecting dotnet environment and diagnostics..."
-          dotnet --info > dotnet-info.log 2>&1 || true
+          set -o pipefail
+          mkdir -p logs
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed 2>&1 | tee logs/restore.log
 
-          echo "Starting dotnet restore for project: src/FleetRepairBot.Web/FleetRepairBot.Web.csproj"
-          # Capture full restore output to restore.log
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || true
-          rv=$?
-
-          # Publish restore exit code as step output so we can fail the job after artifacts are uploaded
-          echo "restore_exit_code=$rv" >> $GITHUB_OUTPUT
-
-          echo "====== dotnet --info ======"
-          cat dotnet-info.log || true
-          echo "====== restore.log ======"
-          cat restore.log || true
-
-      - name: Build (detailed) and capture log
-        id: build
-        run: |
-          set -euo pipefail
-          echo "Starting dotnet build (no-restore) for project: src/FleetRepairBot.Web/FleetRepairBot.Web.csproj"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed > build.log 2>&1 || true
-          brv=$?
-          echo "build_exit_code=$brv" >> $GITHUB_OUTPUT
-
-          echo "====== build.log ======"
-          cat build.log || true
-
-      - name: Upload diagnostics artifacts
-        if: always()
+      - name: Upload restore log
         uses: actions/upload-artifact@v4
         with:
-          name: dotnet-logs-${{ github.run_id }}
+          name: restore-log
+          path: logs/restore.log
+
+      - name: Build (no-restore, detailed)
+        run: |
+          set -o pipefail
+          mkdir -p logs
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed 2>&1 | tee logs/build.log
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: logs/build.log
+
+      - name: Optional diagnostic logs (run when RUN_DIAGNOSTIC=true)
+        if: ${{ env.RUN_DIAGNOSTIC == 'true' }}
+        run: |
+          set -o pipefail
+          mkdir -p logs
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity diagnostic 2>&1 | tee logs/restore-diagnostic.log
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity diagnostic 2>&1 | tee logs/build-diagnostic.log
+
+      - name: Upload diagnostic logs
+        if: ${{ env.RUN_DIAGNOSTIC == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-logs
           path: |
-            dotnet-info.log
-            restore.log
-            build.log
-
-      - name: Fail if restore failed
-        if: ${{ steps.restore.outputs.restore_exit_code != '0' }}
-        run: |
-          echo "dotnet restore failed with exit code ${{ steps.restore.outputs.restore_exit_code }}"
-          exit 1
-
-      - name: Fail if build failed
-        if: ${{ steps.build.outputs.build_exit_code != '0' }}
-        run: |
-          echo "dotnet build failed with exit code ${{ steps.build.outputs.build_exit_code }}"
-          exit 1
+            logs/restore-diagnostic.log
+            logs/build-diagnostic.log
