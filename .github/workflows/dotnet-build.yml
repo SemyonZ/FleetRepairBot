@@ -1,4 +1,4 @@
-name: .NET Build
+name: .NET Build (detailed + binary logs)
 
 on:
   push:
@@ -8,41 +8,44 @@ on:
 
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
       - name: Restore (detailed)
+        id: restore
         run: |
-          set -e
-          echo "Running dotnet restore with detailed verbosity"
-          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1 || (echo "dotnet restore failed, printing restore.log" && cat restore.log && exit 1)
-
-      - name: Upload restore logs
-        uses: actions/upload-artifact@v4
-        with:
-          name: restore-logs
-          path: restore.log
+          echo "Running: dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed"
+          dotnet restore src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --verbosity detailed > restore.log 2>&1
 
       - name: Build (detailed + binary msbuild log)
+        id: build_step
         run: |
-          set -e
-          echo "Running dotnet build with detailed verbosity and binary msbuild log"
-          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /bl:build.binlog > build.log 2>&1 || (echo "dotnet build failed, printing build.log" && cat build.log && exit 1)
+          echo "Running: dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /bl:msbuild.binlog"
+          dotnet build src/FleetRepairBot.Web/FleetRepairBot.Web.csproj --no-restore --configuration Release --verbosity detailed /bl:msbuild.binlog > build.log 2>&1
 
-      - name: Upload build logs and binlog
+      - name: Show last lines of logs for quick UI inspection
+        if: always()
+        run: |
+          echo "===== restore.log (last 2000 lines) ====="
+          tail -n 2000 restore.log || true
+          echo "===== build.log (last 2000 lines) ====="
+          tail -n 2000 build.log || true
+
+      - name: Upload build artifacts (logs + msbuild binary log)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-logs
           path: |
+            restore.log
             build.log
-            build.binlog
+            msbuild.binlog
